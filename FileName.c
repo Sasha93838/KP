@@ -18,7 +18,8 @@
 #define MATRIX_WIDTH 10
 #define N 90
 #define K 400
-#define D 1
+#define D 2
+#define MAX_RESULTS 100
 
  // Структура для хранения битовой матрицы
 struct BitMatrix_type {
@@ -28,28 +29,17 @@ struct BitMatrix_type {
 };
 typedef struct BitMatrix_type BitMatrix;
 
-// Структура для хранения результатов мониторинга
-struct ResultEntry_type {
-    char time[20];          // Время проведения мониторинга (строка формата "ЧЧ:MM")
-    float percentage;       // Процент изменений между матрицами
-};
-typedef struct ResultEntry_type ResultEntry;
-
 /* Прототипы функций */
-char* generate_filename(void); // Генерация имени файла
-bool write_bit_matrix_to_file(const char* filename); // Запись матрицы в файл
-int destroy_bit_matrix(BitMatrix* matrix); // Уничтожение матрицы
-BitMatrix* read_bit_matrix(const char* filename); // Чтение данных матрицы
-float compare_matrices(BitMatrix* matrix1, BitMatrix* matrix2); // Сравнение матриц
-bool write_result_to_file(const char* time, float percentage); // Запись результатов в файл
-ResultEntry* read_results_from_file(int* count); // Чтение результатов из файла
-int sort_results(ResultEntry* results, int count); // Сортировка результатов
-ResultEntry* filter_results(ResultEntry* results, int count, float filter_value, bool is_greater, int* filtered_count); // Фильтрация результатов
-int get_time_in_seconds(const char* time); // Получение времени
-
-/* Глобальные переменные для хранения текущего времени */
-int current_hour = 12;
-int current_minute = 0;
+char* generate_filename(void); // Генерация имени файла. Возвращает указатель на строку (char*).
+bool write_bit_matrix_to_file(const char* filename); // Запись матрицы в файл. Возвращает true, если запись прошла успешно, иначе false (bool).
+int destroy_bit_matrix(BitMatrix* matrix); // Уничтожение матрицы. Возвращает 0 в случае успеха (int).
+BitMatrix* read_bit_matrix(const char* filename); // Чтение данных матрицы. Возвращает указатель на BitMatrix, если чтение прошло успешно, иначе NULL (BitMatrix*).
+float compare_matrices(BitMatrix* matrix1, BitMatrix* matrix2); // Сравнение матриц. Возвращает процент различий между матрицами (float).
+bool write_result_to_file(const char* time, float percentage); // Запись результатов в файл. Возвращает true, если запись прошла успешно, иначе false (bool).
+int read_results_from_file(const char* filename, char (*times)[20], float* percentages); // Чтение результатов из файла. Возвращает количество считанных результатов (int).
+int sort_results(char times[MAX_RESULTS][20], float percentages[MAX_RESULTS], int count); // Сортировка результатов. Возвращает 0 в случае успеха (int).
+int filter_results(void* data[], float filter_value, bool is_greater); // Фильтрация результатов. Возвращает количество отфильтрованных результатов (int).
+int get_time_in_seconds(const char* time); // Преобразует время в формате "ЧЧ-MM-SS" в секунды. Возвращает количество секунд с начала дня (int).
 
 /* Основная функция программы */
 int main() {
@@ -57,6 +47,12 @@ int main() {
     int monitoring_enabled = 0;
     int mode = 0;
     int file_counter = 0;
+    char times[MAX_RESULTS][20];        // Массив для хранения времени
+    float percentages[MAX_RESULTS];     // Массив для хранения процентов изменений
+    int count = 0;                      // Количество результатов
+    char filtered_times[MAX_RESULTS][20];       // Массив для хранения отфильтрованного времени
+    float filtered_percentages[MAX_RESULTS];    // Массив для хранения отфильтрованных процентов
+    int filtered_count = 0;                     // Количество отфильтрованных результатов
 
     printf("=================================================================================\n");
     printf("Добро пожаловать в программу мониторинга изменений в битовых матрицах! \n");
@@ -70,7 +66,7 @@ int main() {
     printf(" - Не забывайте очищать результаты после использования.\n");
     printf("=== Приятного использования! ===\n\n");
 
-    srand((unsigned int)time(NULL)); 
+    srand((unsigned int)time(NULL)); // Инициализация генератора случайных чисел
 
     while (1) {
         printf("==================================================\n");
@@ -95,89 +91,69 @@ int main() {
             monitoring_enabled = 0;
             printf("--- Мониторинг выключен. ---\n");
             break;
-        case 3: {
-            int count = 0;
-            ResultEntry* results = read_results_from_file(&count);
-            if (results == NULL) {
+        case 3:
+            count = read_results_from_file("результат", times, percentages);
+            if (count == 0) {
                 printf("=== Файл результатов не найден. ===\n");
                 break;
             }
-
-            sort_results(results, count);
+            sort_results(times, percentages, count);
             printf(" Результаты (отсортированные по проценту изменения): \n");
             printf("  Время    Процент изменения\n");
             for (int i = 0; i < count; i++) {
-                printf(" %s      %.2f\n", results[i].time, results[i].percentage);
+                printf(" %s      %.2f\n", times[i], percentages[i]);
             }
-
-            free(results);
             break;
-        }
-        case 4: {
-            int count = 0;
-            ResultEntry* results = read_results_from_file(&count);
-            if (results == NULL) {
+        case 4:
+            count = read_results_from_file("результат", times, percentages);
+            if (count == 0) {
                 printf("=== Файл результатов не найден. ===\n");
                 break;
             }
-
-            float filter_value;
-            printf("************************************************\n");
+            float filter_value_greater;
             printf("Введите число для фильтрации (результаты больше этого числа): ");
-            scanf("%f", &filter_value);
-            printf("************************************************\n");
+            scanf("%f", &filter_value_greater);
 
-            int filtered_count = 0;
-            ResultEntry* filtered_results = filter_results(results, count, filter_value, true, &filtered_count);
-            printf(" Результаты фильтрации (больше %.2f): \n", filter_value);
+            // Подготовка данных для передачи в функцию
+            void* data_greater[] = { times, percentages, filtered_times, filtered_percentages, &count };
+
+            filtered_count = filter_results(data_greater, filter_value_greater, true);
+            printf(" Результаты фильтрации (больше %.2f): \n", filter_value_greater);
             for (int i = 0; i < filtered_count; i++) {
-                printf("Время: %s, Процент изменения: %.2f%%\n", filtered_results[i].time, filtered_results[i].percentage);
+                printf("Время: %s, Процент изменения: %.2f%%\n", filtered_times[i], filtered_percentages[i]);
             }
-            free(filtered_results);
-            free(results);
             break;
-        }
-        case 5: {
-            int count = 0;
-            ResultEntry* results = read_results_from_file(&count);
-            if (results == NULL) {
+        case 5:
+            count = read_results_from_file("результат", times, percentages);
+            if (count == 0) {
                 printf("=== Файл результатов не найден. ===\n");
                 break;
             }
-
-            float filter_value;
-            printf("************************************************\n");
+            float filter_value_less;
             printf("Введите число для фильтрации (результаты меньше этого числа): ");
-            scanf("%f", &filter_value);
-            printf("************************************************\n");
+            scanf("%f", &filter_value_less);
 
-            int filtered_count = 0;
-            ResultEntry* filtered_results = filter_results(results, count, filter_value, false, &filtered_count);
-            printf(" Результаты фильтрации (меньше %.2f): \n", filter_value);
+            // Подготовка данных для передачи в функцию
+            void* data_less[] = { times, percentages, filtered_times, filtered_percentages, &count };
+
+            filtered_count = filter_results(data_less, filter_value_less, false);
+            printf(" Результаты фильтрации (меньше %.2f): \n", filter_value_less);
             for (int i = 0; i < filtered_count; i++) {
-                printf("Время: %s, Процент изменения: %.2f%%\n", filtered_results[i].time, filtered_results[i].percentage);
+                printf("Время: %s, Процент изменения: %.2f%%\n", filtered_times[i], filtered_percentages[i]);
             }
-            free(filtered_results);
-            free(results);
             break;
-        }
-        case 6: {
-            int count = 0;
-            ResultEntry* results = read_results_from_file(&count);
-            if (results == NULL) {
+        case 6:
+            count = read_results_from_file("результат", times, percentages);
+            if (count == 0) {
                 printf("=== Файл результатов не найден. ===\n");
                 break;
             }
-
             printf(" Результаты из файла: \n");
             printf("  Время    Процент изменения\n");
             for (int i = 0; i < count; i++) {
-                printf(" %s      %.2f\n", results[i].time, results[i].percentage);
+                printf(" %s      %.2f\n", times[i], percentages[i]);
             }
-
-            free(results);
             break;
-        }
         case 7:
             printf("=== Выход из программы. ===\n");
             exit(0);
@@ -198,8 +174,8 @@ int main() {
                     continue;
                 }
 
-                // Вывод сообщения о создании файла
                 printf(" Файл создан: %s \n", current_filename);
+                Sleep(1000 * D); // Задержка в 2 секунды
 
                 if (previous_filename != NULL) {
                     BitMatrix* previous_matrix = read_bit_matrix(previous_filename);
@@ -223,8 +199,12 @@ int main() {
                             printf("=== ТРЕВОГА! Изображение изменилось более чем на %d%%! ===\n", N);
                         }
 
+                        // Получаем текущее время для записи в файл результатов
+                        time_t now = time(NULL);
+                        struct tm* tm = localtime(&now);
                         char time[20];
-                        sprintf(time, "%02d-%02d", current_hour, current_minute);
+                        sprintf(time, "%02d-%02d-%02d", tm->tm_hour, tm->tm_min, tm->tm_sec);
+
                         if (!write_result_to_file(time, difference)) {
                             printf("=== Ошибка записи результата в файл. ===\n");
                         }
@@ -258,26 +238,20 @@ int main() {
 }
 
 /*
- * Генерирует имя файла на основе текущего времени.
+ * Генерирует имя файла на основе текущего времени (с учетом секунд).
  * Возвращает строку с именем файла.
- * Побочный эффект: увеличивает текущее время на 5 минут.
  */
 char* generate_filename() {
-    current_minute += 5;
-    if (current_minute >= 60) {
-        current_minute -= 60;
-        current_hour++;
-        if (current_hour >= 24) {
-            current_hour = 0;
-        }
-    }
+    time_t now = time(NULL); // Получаем текущее время
+    struct tm* tm = localtime(&now); // Преобразуем в структуру tm
 
     char* filename = (char*)malloc(50);
     if (filename == NULL) {
         exit(1);
     }
 
-    sprintf(filename, "%02d-%02d", current_hour, current_minute);
+    // Формируем имя файла в формате "ЧЧ-ММ-СС"
+    sprintf(filename, "%02d-%02d-%02d", tm->tm_hour, tm->tm_min, tm->tm_sec);
     return filename;
 }
 
@@ -411,42 +385,44 @@ bool write_result_to_file(const char* time, float percentage) {
 
 /*
  * Читает результаты из файла.
- * count - указатель на переменную, в которую будет записано количество результатов.
- * Возвращает массив структур ResultEntry с результатами, если чтение прошло успешно, иначе NULL.
+ * filename - указатель на строку с именем файла.
+ * times - указатель на массив для хранения времени.
+ * percentages - указатель на массив для хранения процентов изменений.
+ * Возвращает количество считанных результатов.
  */
-ResultEntry* read_results_from_file(int* count) {
-    FILE* file = fopen("результат", "r");
+int read_results_from_file(const char* filename, char (*times)[20], float* percentages) {
+    FILE* file = fopen(filename, "r");
     if (file == NULL) {
-        return NULL;
+        return 0;
     }
 
-    ResultEntry* results = malloc(100 * sizeof(ResultEntry));
-    if (results == NULL) {
-        fclose(file);
-        return NULL;
-    }
-
-    *count = 0;
-    while (fscanf(file, "%s %f", results[*count].time, &results[*count].percentage) != EOF) {
-        (*count)++;
+    int count = 0;
+    while (fscanf(file, "%s %f", times[count], &percentages[count]) != EOF) {
+        count++;
     }
 
     fclose(file);
-    return results;
+    return count;
 }
 
 /*
  * Сортирует результаты по проценту изменения.
- * results - массив результатов для сортировки.
- * count - количество элементов в массиве.
+ * times - массив для хранения времени.
+ * percentages - массив для хранения процентов изменений.
+ * count - количество результатов.
  */
-int sort_results(ResultEntry* results, int count) {
+int sort_results(char times[MAX_RESULTS][20], float percentages[MAX_RESULTS], int count) {
     for (int i = 0; i < count - 1; i++) {
         for (int j = i + 1; j < count; j++) {
-            if (results[i].percentage < results[j].percentage) {
-                ResultEntry temp = results[i];
-                results[i] = results[j];
-                results[j] = temp;
+            if (percentages[i] < percentages[j]) {
+                float temp_percentage = percentages[i];
+                percentages[i] = percentages[j];
+                percentages[j] = temp_percentage;
+
+                char temp_time[20];
+                strcpy(temp_time, times[i]);
+                strcpy(times[i], times[j]);
+                strcpy(times[j], temp_time);
             }
         }
     }
@@ -455,38 +431,41 @@ int sort_results(ResultEntry* results, int count) {
 
 /*
  * Фильтрует результаты по заданному значению.
- * results - массив результатов для фильтрации.
- * count - количество элементов в массиве.
+ * data - массив указателей на данные:
+ *   data[0] - массив времени (char*),
+ *   data[1] - массив процентов изменений (float*),
+ *   data[2] - массив для хранения отфильтрованного времени (char*),
+ *   data[3] - массив для хранения отфильтрованных процентов (float*).
  * filter_value - значение для фильтрации.
  * is_greater - если true, фильтрует результаты больше filter_value, иначе меньше.
- * filtered_count - указатель на переменную, в которую будет записано количество отфильтрованных результатов.
- * Возвращает массив отфильтрованных результатов.
+ * Возвращает количество отфильтрованных результатов.
  */
-ResultEntry* filter_results(ResultEntry* results, int count, float filter_value, bool is_greater, int* filtered_count) {
-    ResultEntry* filtered_results = malloc(count * sizeof(ResultEntry));
-    if (filtered_results == NULL) {
-        return NULL;
-    }
+int filter_results(void* data[], float filter_value, bool is_greater) {
+    char (*times)[20] = data[0];              // Массив времени
+    float* percentages = data[1];             // Массив процентов изменений
+    char (*filtered_times)[20] = data[2];     // Массив для отфильтрованного времени
+    float* filtered_percentages = data[3];    // Массив для отфильтрованных процентов
+    int count = *((int*)data[4]);             // Количество результатов
 
-    *filtered_count = 0;
+    int filtered_count = 0;
     for (int i = 0; i < count; i++) {
-        if ((is_greater && results[i].percentage > filter_value) ||
-            (!is_greater && results[i].percentage < filter_value)) {
-            filtered_results[*filtered_count] = results[i];
-            (*filtered_count)++;
+        if ((is_greater && percentages[i] > filter_value) ||
+            (!is_greater && percentages[i] < filter_value)) {
+            strcpy(filtered_times[filtered_count], times[i]);
+            filtered_percentages[filtered_count] = percentages[i];
+            filtered_count++;
         }
     }
-
-    return filtered_results;
+    return filtered_count;
 }
 
 /*
- * Преобразует время в формате "ЧЧ-MM" в секунды.
- * time - строка с временем в формате "HH-MM".
+ * Преобразует время в формате "ЧЧ-MM-SS" в секунды.
+ * time - строка с временем в формате "HH-MM-SS".
  * Возвращает количество секунд с начала дня.
  */
 int get_time_in_seconds(const char* time) {
-    int hours, minutes;
-    sscanf(time, "%d-%d", &hours, &minutes);
-    return hours * 3600 + minutes * 60;
+    int hours, minutes, seconds;
+    sscanf(time, "%d-%d-%d", &hours, &minutes, &seconds);
+    return hours * 3600 + minutes * 60 + seconds;
 }
