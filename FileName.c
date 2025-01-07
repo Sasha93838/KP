@@ -1,11 +1,12 @@
 /*
-  Автор: Батищев Александр, бИЦ-241
-  Программа для мониторинга изменений в битовых матрицах.
-  Описание:
-  - Генерация и сравнение битовых матриц.
-  - Запись результатов сравнения в файл.
-  - Сортировка и фильтрация результатов.
- */
+ Автор: Батищев Александр, бИЦ-241
+ Программа для мониторинга изменений в битовых матрицах.
+ Описание:
+ - Генерация и сравнение битовых матриц.
+ - Запись результатов сравнения в файл.
+ - Сортировка и фильтрация результатов.
+*/
+
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +22,7 @@
 #define D 2
 #define MAX_RESULTS 100
 
- // Структура для хранения битовой матрицы
+// Структура для хранения битовой матрицы
 struct BitMatrix_type {
     int width;              // Ширина матрицы
     int height;             // Высота матрицы
@@ -41,7 +42,10 @@ int sort_results(char times[MAX_RESULTS][20], float percentages[MAX_RESULTS], in
 int filter_results(void* data[], float filter_value, bool is_greater); // Фильтрация результатов. Возвращает количество отфильтрованных результатов (int).
 int get_time_in_seconds(const char* time); // Преобразует время в формате "ЧЧ-MM-SS" в секунды. Возвращает количество секунд с начала дня (int).
 
-/* Основная функция программы */
+// Новые функции
+bool write_random_matrix(const char* filename, int min_size, int max_size); // Генерация и запись случайной матрицы в файл. Возвращает true, если запись прошла успешно, иначе false (bool).
+float compare_matrices_from_files(BitMatrix* matrix1, BitMatrix* matrix2); // Сравнение матриц из файлов. Возвращает процент различий между матрицами (float).
+
 int main() {
     setlocale(LC_CTYPE, "RUS");
     int monitoring_enabled = 0;
@@ -77,7 +81,8 @@ int main() {
         printf("4 - Фильтровать результаты (больше числа)\n");
         printf("5 - Фильтровать результаты (меньше числа)\n");
         printf("6 - Прочитать данные из файла результатов\n");
-        printf("7 - Выход\n");
+        printf("7 - Создать две случайные матрицы и сравнить их\n");
+        printf("8 - Выход\n");
         printf("Ваш выбор: ");
         scanf("%d", &mode);
         printf("==================================================\n");
@@ -154,14 +159,50 @@ int main() {
                 printf(" %s      %.2f\n", times[i], percentages[i]);
             }
             break;
-        case 7:
+        case 7: {
+            // Генерация имен файлов
+            char* filename1 = generate_filename();
+            Sleep(1000 * D);
+            char* filename2 = generate_filename();
+
+            // Создание и запись двух случайных матриц
+            if (write_random_matrix(filename1, 4, 8)) {
+                printf("Матрица 1 создана и записана в файл: %s\n", filename1);
+            }
+            else {
+                printf("Ошибка создания матрицы 1.\n");
+            }
+
+            if (write_random_matrix(filename2, 4, 8)) {
+                printf("Матрица 2 создана и записана в файл: %s\n", filename2);
+            }
+            else {
+                printf("Ошибка создания матрицы 2.\n");
+            }
+
+            // Сравнение матриц из файлов
+            float difference = compare_matrices_from_files(filename1, filename2);
+            if (difference >= 0) {
+                printf("Процент различий между матрицами: %.2f%%\n", difference);
+            }
+            else {
+                printf("Ошибка сравнения матриц.\n");
+            }
+
+            // Освобождаем память
+            free(filename1);
+            free(filename2);
+            break;
+        }
+        case 8:
             printf("=== Выход из программы. ===\n");
             exit(0);
         default:
             printf("=== Неверный выбор. ===\n");
-            continue;
+            break;
         }
 
+        // Блок мониторинга
         while (monitoring_enabled) {
             int loop_count = 10;
             char* previous_filename = NULL;
@@ -219,7 +260,7 @@ int main() {
                 file_counter++;
 
                 if (file_counter % 4 == 0) {
-                    printf("=== Созданы файлы. Продолжить мониторинг? (1 - Да, 0 - Нет): ===\n", file_counter);
+                    printf("=== Созданы файлы. Продолжить мониторинг? (1 - Да, 0 - Нет): ===\n");
                     int continue_monitoring;
                     scanf("%d", &continue_monitoring);
                     if (continue_monitoring == 0) {
@@ -271,7 +312,7 @@ bool write_bit_matrix_to_file(const char* filename) {
     // Генерация случайной матрицы
     for (int i = 0; i < MATRIX_HEIGHT; i++) {
         for (int j = 0; j < MATRIX_WIDTH; j++) {
-            unsigned char value = rand() % 8; // Генерация 0 или 1
+            unsigned char value = rand() % 8; 
             fprintf(file, "%d ", value);
         }
         fprintf(file, "\n");
@@ -468,4 +509,100 @@ int get_time_in_seconds(const char* time) {
     int hours, minutes, seconds;
     sscanf(time, "%d-%d-%d", &hours, &minutes, &seconds);
     return hours * 3600 + minutes * 60 + seconds;
+}
+
+/*
+ * Генерирует случайную матрицу и записывает её в файл.
+ * filename - имя файла для записи.
+ * min_size - минимальный размер матрицы.
+ * max_size - максимальный размер матрицы.
+ * Возвращает true, если запись прошла успешно, иначе false.
+ */
+bool write_random_matrix(const char* filename, int min_size, int max_size) {
+    // Генерация случайных размеров матрицы
+    int width = rand() % (max_size - min_size + 1) + min_size;
+    int height = rand() % (max_size - min_size + 1) + min_size;
+
+    // Создание матрицы
+    BitMatrix* matrix = malloc(sizeof(BitMatrix));
+    if (matrix == NULL) {
+        return false;
+    }
+
+    matrix->width = width;
+    matrix->height = height;
+    matrix->data = malloc(width * height * sizeof(unsigned char));
+    if (matrix->data == NULL) {
+        free(matrix);
+        return false;
+    }
+
+    // Заполнение матрицы случайными значениями (0 или 1)
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            matrix->data[i * width + j] = rand() % 2;
+        }
+    }
+
+    // Запись матрицы в файл
+    FILE* file = fopen(filename, "w");
+    if (file == NULL) {
+        destroy_bit_matrix(matrix);
+        return false;
+    }
+
+    fprintf(file, "%d %d\n", width, height);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            fprintf(file, "%d ", matrix->data[i * width + j]);
+        }
+        fprintf(file, "\n");
+    }
+
+    fclose(file);
+    destroy_bit_matrix(matrix);
+    return true;
+}
+
+/*
+ * Сравнивает две матрицы из файлов, учитывая различия в размерах.
+ * filename1 - имя файла первой матрицы.
+ * filename2 - имя файла второй матрицы.
+ * Возвращает процент различий между матрицами.
+ * Если произошла ошибка, возвращает -1.
+ */
+float compare_matrices_from_files(const char* filename1, const char* filename2) {
+    BitMatrix* matrix1 = read_bit_matrix(filename1);
+    if (matrix1 == NULL) {
+        return -1; 
+    }
+    BitMatrix* matrix2 = read_bit_matrix(filename2);
+    if (matrix2 == NULL) {
+        destroy_bit_matrix(matrix1); // Освобождаем память первой матрицы
+        return -1; 
+    }
+
+    // Определяем максимальные размеры для сравнения
+    int max_width = (matrix1->width > matrix2->width) ? matrix1->width : matrix2->width;
+    int max_height = (matrix1->height > matrix2->height) ? matrix1->height : matrix2->height;
+    int total_elements = max_width * max_height;
+    int different_elements = 0;
+
+    // Сравниваем элементы в пределах общей области
+    for (int i = 0; i < max_height; i++) {
+        for (int j = 0; j < max_width; j++) {
+            // Получаем значение из первой матрицы (или -1, если вышли за пределы)
+            int value1 = (i < matrix1->height && j < matrix1->width) ? matrix1->data[i * matrix1->width + j] : -1;
+
+            // Получаем значение из второй матрицы (или -1, если вышли за пределы)
+            int value2 = (i < matrix2->height && j < matrix2->width) ? matrix2->data[i * matrix2->width + j] : -1;
+
+            if (value1 != value2) {
+                different_elements++;
+            }
+        }
+    }
+    destroy_bit_matrix(matrix1);
+    destroy_bit_matrix(matrix2);
+    return (float)different_elements / total_elements * 100;
 }
